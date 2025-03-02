@@ -5,21 +5,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Define input image dimensions
-IMG_SHAPE = (512, 512, 3)
+IMG_SHAPE = (128, 128, 3)
 LATENT_DIM = 100  # Size of the noise vector
 
 def build_generator():
     model = keras.Sequential([
-        layers.Dense(32 * 32 * 64, use_bias=False, input_shape=(LATENT_DIM,)),
+        layers.Dense(16 * 16 * 64, use_bias=False, input_shape=(LATENT_DIM,)),
         layers.BatchNormalization(),
         layers.LeakyReLU(),
-        layers.Reshape((32, 32, 64)),
+        layers.Reshape((16, 16, 64)),
         
-        layers.Conv2DTranspose(32, (5, 5), strides=(4, 4), padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(),
-        
-        layers.Conv2DTranspose(16, (5, 5), strides=(2, 2), padding='same', use_bias=False),
+        layers.Conv2DTranspose(16, (5, 5), strides=(4, 4), padding='same', use_bias=False),
         layers.BatchNormalization(),
         layers.LeakyReLU(),
         
@@ -61,25 +57,26 @@ def build_gan():
 
 def train_gan(dataset, discriminator, generator, gan, epochs=10000, batch_size=128):
     half_batch = batch_size // 2
-    dataset = dataset.shuffle(buffer_size=500).batch(batch_size).prefetch(tf.data.AUTOTUNE)
-    
+   
     for epoch in range(epochs):
-        for real_images in dataset.take(1):  # Get a batch of real images
-            real_images = real_images.numpy()  # Convert to NumPy
-        
-        noise = np.random.normal(0, 1, (half_batch, LATENT_DIM))
-        fake_images = generator.predict(noise)
-        
-        d_loss_real = discriminator.train_on_batch(real_images, np.ones((half_batch, 1)))
-        d_loss_fake = discriminator.train_on_batch(fake_images, np.zeros((half_batch, 1)))
-        d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-        
-        noise = np.random.normal(0, 1, (batch_size, LATENT_DIM))
-        g_loss = gan.train_on_batch(noise, np.ones((batch_size, 1)))
-        
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch}, D Loss: {d_loss[0]}, G Loss: {g_loss}")
-            generate_and_save_images(epoch)
+        d_losses = []
+        g_losses = []
+        for real_images in dataset:  # Get a batch of real images
+
+            noise = np.random.normal(0, 1, (half_batch, LATENT_DIM))
+            fake_images = generator.predict(noise)
+
+            discriminator.trainable = True
+            d_loss_real = discriminator.train_on_batch(real_images, np.ones((half_batch, 1)))
+            d_loss_fake = discriminator.train_on_batch(fake_images, np.zeros((half_batch, 1)))
+            d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+            d_losses.append(d_loss[0])
+            discriminator.trainable = False
+            noise = np.random.normal(0, 1, (batch_size, LATENT_DIM))
+            g_loss = gan.train_on_batch(noise, np.ones((batch_size, 1)))
+            g_losses.append(g_loss)
+        print(f"Epoch {epoch}, D Loss: {np.mean(d_losses)}, G Loss: {np.mean(g_losses)}")
+        generate_and_save_images(epoch, generator)
 
 # Function to generate and save images
 def generate_and_save_images(epoch, generator):

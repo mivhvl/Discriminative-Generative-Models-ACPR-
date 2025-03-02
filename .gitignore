@@ -1,6 +1,6 @@
 .ipynb_checkpoints
 data
-data_extra
+prepared_data
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

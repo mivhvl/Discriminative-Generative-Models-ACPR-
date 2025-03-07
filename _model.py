@@ -39,11 +39,13 @@ def build_discriminator():
     ])
     return model
 
-def build_gan():
-    generator = build_generator()
-    discriminator = build_discriminator()
-
-    discriminator.compile(loss='binary_crossentropy', optimizer=keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5), metrics=['accuracy'])
+def build_gan(discriminator, generator, learning_rate, beta_1):
+    if generator is None:
+        generator = build_generator()
+        discriminator.compile(loss='binary_crossentropy', optimizer=keras.optimizers.Adam(learning_rate=learning_rate, beta_1=beta_1), metrics=['accuracy'])
+    
+    if discriminator is None:
+        discriminator = build_discriminator()
 
     discriminator.trainable = False
 
@@ -52,12 +54,12 @@ def build_gan():
     gan_output = discriminator(generated_image)
 
     gan = keras.Model(gan_input, gan_output)
-    gan.compile(loss='binary_crossentropy', optimizer=keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5))
+    gan.compile(loss='binary_crossentropy', optimizer=keras.optimizers.Adam(learning_rate=learning_rate, beta_1=beta_1))
     return discriminator, generator, gan
 
 def train_gan(dataset, discriminator, generator, gan, epochs=10000, batch_size=128):
     half_batch = batch_size // 2
-   
+    
     for epoch in range(epochs):
         d_losses = []
         g_losses = []

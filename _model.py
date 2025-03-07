@@ -61,8 +61,9 @@ def train_gan(dataset, discriminator, generator, gan, epochs=10000, batch_size=1
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
-        for real_images in dataset:  # Get a batch of real images
-
+        batches = dataset.take(39)
+        for batch in batches:
+            real_images = batch
             noise = np.random.normal(0, 1, (half_batch, LATENT_DIM))
             fake_images = generator.predict(noise)
 

@@ -4,27 +4,32 @@ from tensorflow.keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import display
-cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
 # Define input image dimensions
-IMG_SHAPE = (128, 128, 3)
+IMG_SHAPE = (64, 64, 3)
 LATENT_DIM = 100  # Size of the noise vector
+
+cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
 def build_generator():
     model = keras.Sequential([
-        layers.Dense(16 * 16 * 64, use_bias=False, input_shape=(LATENT_DIM,)),
+        layers.Dense(8 * 8 * 128, use_bias=False, input_shape=(LATENT_DIM,)),
         layers.BatchNormalization(),
         layers.LeakyReLU(),
-        layers.Reshape((16, 16, 64)),
-        
-        layers.Conv2DTranspose(16, (5, 5), strides=(4, 4), padding='same', use_bias=False),
+        layers.Reshape((8, 8, 128)),
+
+        layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(),
+
+
+        layers.Conv2DTranspose(32, (5, 5), strides=(2, 2), padding='same', use_bias=False),
         layers.BatchNormalization(),
         layers.LeakyReLU(),
         
-        layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', activation='tanh')
+        layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
     ])
     return model
-
 
 def build_discriminator():
     model = keras.Sequential([
@@ -37,16 +42,16 @@ def build_discriminator():
         layers.Dropout(0.3),
         
         layers.Flatten(),
-        layers.Dense(1, activation='sigmoid')
+        layers.Dense(1)
     ])
     return model
 
-def build_gan():
+def build_gan(g_lr=1e-4, d_lr=1e-4):
     generator = build_generator()
     discriminator = build_discriminator()
 
-    generator_optimizer = tf.keras.optimizers.Adam(1e-4)
-    discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+    generator_optimizer = tf.keras.optimizers.Adam(g_lr)
+    discriminator_optimizer = tf.keras.optimizers.Adam(d_lr)
     return discriminator, generator, generator_optimizer, discriminator_optimizer
 
 def discriminator_loss(real_output, fake_output):
@@ -80,16 +85,24 @@ def train_step(images, discriminator, generator, discriminator_optimizer, genera
 
 def train_gan(dataset, discriminator, generator, discriminator_optimizer, generator_optimizer, epochs=100, batch_size=128):
     half_batch = batch_size // 2
-   
+    e_d_losses = []
+    e_g_losses = []
+
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
         for batch in dataset:
             d_loss, g_loss = train_step(batch, discriminator, generator, discriminator_optimizer, generator_optimizer, batch_size=half_batch)
+            d_losses.append(d_loss.numpy())
+            g_losses.append(g_loss.numpy())
         display.clear_output(wait=True)
-        print(f"Epoch {epoch}, D Loss: {np.mean(d_losses)}, G Loss: {np.mean(g_losses)}")
+        e_d_loss = np.mean(d_losses)
+        e_g_loss = np.mean(g_losses)
+        e_d_losses.append(e_d_loss)
+        e_g_losses.append(e_g_loss)
+        print(f"Epoch {epoch}, D Loss: {e_d_loss}, G Loss: {e_g_loss}")
         generate_and_save_images(epoch, generator)
-
+    return e_d_losses, e_g_losses
 # Function to generate and save images
 def generate_and_save_images(epoch, generator):
     noise = np.random.normal(0, 1, (16, LATENT_DIM))

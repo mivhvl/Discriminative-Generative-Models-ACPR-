@@ -74,6 +74,21 @@ def discriminator_loss(real_output, fake_output):
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
+def graph_losses(d_loss, g_loss):
+    plt.figure(figsize=(16, 8), dpi=150) 
+  
+    plt.plot(d_loss, label='Discriminator Loss', color='orange')
+
+    plt.plot(g_loss, label='Generator Loss', color='blue')
+
+    # adding title to the plot 
+    plt.title('Loss per iteration (batch)') 
+    
+    # adding Label to the x-axis 
+    plt.xlabel('iteration')
+    plt.show()
+
+
 def train_step(images, discriminator, generator, discriminator_optimizer, generator_optimizer, batch_size=128):
     noise = tf.random.normal([batch_size, LATENT_DIM])
 
@@ -94,11 +109,11 @@ def train_step(images, discriminator, generator, discriminator_optimizer, genera
     discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
     return disc_loss, gen_loss
 
-def train_gan(dataset, discriminator, generator, discriminator_optimizer, generator_optimizer, epochs=100, batch_size=128):
+def train_gan(dataset, discriminator, generator, discriminator_optimizer, generator_optimizer, epochs=100, batch_size=128, debug_loss=True):
     half_batch = batch_size // 2
     e_d_losses = []
     e_g_losses = []
-
+    
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
@@ -106,15 +121,17 @@ def train_gan(dataset, discriminator, generator, discriminator_optimizer, genera
             d_loss, g_loss = train_step(batch, discriminator, generator, discriminator_optimizer, generator_optimizer, batch_size=half_batch)
             d_losses.append(d_loss.numpy())
             g_losses.append(g_loss.numpy())
+            e_d_losses.append(d_loss.numpy())
+            e_g_losses.append(g_loss.numpy())
         display.clear_output(wait=True)
         e_d_loss = np.mean(d_losses)
         e_g_loss = np.mean(g_losses)
-        e_d_losses.append(e_d_loss)
-        e_g_losses.append(e_g_loss)
         print(f"Epoch {epoch}, D Loss: {e_d_loss}, G Loss: {e_g_loss}")
+        if debug_loss:
+            graph_losses(e_d_losses, e_g_losses)
         generate_and_save_images(epoch, generator)
     return e_d_losses, e_g_losses
-# Function to generate and save images
+
 def generate_and_save_images(epoch, generator):
     noise = np.random.normal(0, 1, (16, LATENT_DIM))
     gen_images = generator.predict(noise)
@@ -126,3 +143,4 @@ def generate_and_save_images(epoch, generator):
         ax.axis('off')
     plt.savefig(f'gan_images/epoch_{epoch}.png')
     plt.close()
+

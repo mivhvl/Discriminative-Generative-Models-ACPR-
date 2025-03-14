@@ -9,7 +9,7 @@ from IPython import display
 IMG_SHAPE = (64, 64, 3)
 LATENT_DIM = 100  # Size of the noise vector
 
-cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
 def build_generator():
     model = keras.Sequential([
@@ -33,16 +33,27 @@ def build_generator():
 
 def build_discriminator():
     model = keras.Sequential([
-        layers.Conv2D(32, (5, 5), strides=(2, 2), padding='same', input_shape=IMG_SHAPE),
+        layers.Conv2D(64, kernel_size=4, strides=2, padding='same', use_bias=False),
         layers.LeakyReLU(alpha=0.2),
-        layers.Dropout(0.3),
         
-        layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same'),
+        # State size: (64) x 32 x 32
+        layers.Conv2D(64 * 2, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Dropout(0.3),
         
-        layers.Flatten(),
-        layers.Dense(1)
+        # State size: (64*2) x 16 x 16
+        layers.Conv2D(64 * 4, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64*4) x 8 x 8
+        layers.Conv2D(64 * 8, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64*8) x 4 x 4
+        layers.Conv2D(1, kernel_size=4, strides=1, padding='valid', use_bias=False),
+        layers.Activation('sigmoid')
     ])
     return model
 

@@ -57,14 +57,6 @@ def build_discriminator():
     ])
     return model
 
-def build_gan(g_lr=1e-4, d_lr=1e-4):
-    generator = build_generator()
-    discriminator = build_discriminator()
-
-    generator_optimizer = tf.keras.optimizers.Adam(g_lr)
-    discriminator_optimizer = tf.keras.optimizers.Adam(d_lr)
-    return discriminator, generator, generator_optimizer, discriminator_optimizer
-
 def discriminator_loss(real_output, fake_output):
     real_loss = cross_entropy(tf.ones_like(real_output), real_output)
     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
@@ -88,49 +80,74 @@ def graph_losses(d_loss, g_loss):
     plt.xlabel('iteration')
     plt.show()
 
+class GAN(keras.Model):
+    def __init__(self, generator, discriminator):
+        super(GAN, self).__init__()
+        self.generator = generator
+        self.discriminator = discriminator
 
-def train_step(images, discriminator, generator, discriminator_optimizer, generator_optimizer, batch_size=128):
-    noise = tf.random.normal([batch_size, LATENT_DIM])
+    def compile(self, g_optimizer, d_optimizer):
+        super(GAN, self).compile()
+        self.g_optimizer = g_optimizer
+        self.d_optimizer = d_optimizer
 
-    disc_loss = gen_loss = 0
-    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-      generated_images = generator(noise, training=True)
+    def train_step(self, images, batch_size=128):
+        noise = tf.random.normal([batch_size, LATENT_DIM])
 
-      real_output = discriminator(images, training=True)
-      fake_output = discriminator(generated_images, training=True)
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            generated_images = self.generator(noise, training=True)
 
-      gen_loss = generator_loss(fake_output)
-      disc_loss = discriminator_loss(real_output, fake_output)
+            real_output = self.discriminator(images, training=True)
+            fake_output = self.discriminator(generated_images, training=True)
 
-    gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
-    gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
+            gen_loss = generator_loss(fake_output)
+            disc_loss = discriminator_loss(real_output, fake_output)
 
-    generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
-    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
-    return disc_loss, gen_loss
+        gradients_of_generator = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
+        gradients_of_discriminator = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
 
-def train_gan(dataset, discriminator, generator, discriminator_optimizer, generator_optimizer, epochs=100, batch_size=128, debug_loss=True):
-    half_batch = batch_size // 2
+        self.g_optimizer.apply_gradients(zip(gradients_of_generator, self.generator.trainable_variables))
+        self.d_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator.trainable_variables))
+
+        return disc_loss, gen_loss
+
+def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
     e_d_losses = []
     e_g_losses = []
-    
+
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
         for batch in dataset:
-            d_loss, g_loss = train_step(batch, discriminator, generator, discriminator_optimizer, generator_optimizer, batch_size=half_batch)
+            d_loss, g_loss = gan.train_step(batch, batch_size=batch_size // 2)
             d_losses.append(d_loss.numpy())
             g_losses.append(g_loss.numpy())
             e_d_losses.append(d_loss.numpy())
             e_g_losses.append(g_loss.numpy())
+
         display.clear_output(wait=True)
         e_d_loss = np.mean(d_losses)
         e_g_loss = np.mean(g_losses)
         print(f"Epoch {epoch}, D Loss: {e_d_loss}, G Loss: {e_g_loss}")
+
         if debug_loss:
-            graph_losses(e_d_losses, e_g_losses)
-        generate_and_save_images(epoch, generator)
+            graph_losses(e_d_losses, e_g_losses)  # Ensure you have this function defined
+        generate_and_save_images(epoch, gan.generator)  # Ensure this function is also defined
+
     return e_d_losses, e_g_losses
+
+def build_gan(g_lr=1e-4, d_lr=1e-4):
+    generator = build_generator()
+    discriminator = build_discriminator()
+
+    g_optimizer = keras.optimizers.Adam(g_lr)
+    d_optimizer = keras.optimizers.Adam(d_lr)
+
+    gan = GAN(generator, discriminator)
+    gan.compile(g_optimizer, d_optimizer)
+    
+    return gan
+
 
 def generate_and_save_images(epoch, generator):
     noise = np.random.normal(0, 1, (16, LATENT_DIM))

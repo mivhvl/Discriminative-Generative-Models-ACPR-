@@ -11,21 +11,26 @@ LATENT_DIM = 100  # Size of the noise vector
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
-def build_generator():
+
+def build_generator(leak=False):
+    if leak:
+        act = layers.LeakyReLU
+    else:
+        act = layers.ReLU
     model = keras.Sequential([
         layers.Dense(8 * 8 * 128, use_bias=False, input_shape=(LATENT_DIM,)),
         layers.BatchNormalization(),
-        layers.LeakyReLU(),
+        act(),
         layers.Reshape((8, 8, 128)),
 
         layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
         layers.BatchNormalization(),
-        layers.LeakyReLU(),
+        act(),
 
 
         layers.Conv2DTranspose(32, (5, 5), strides=(2, 2), padding='same', use_bias=False),
         layers.BatchNormalization(),
-        layers.LeakyReLU(),
+        act(),
         
         layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
     ])
@@ -136,18 +141,107 @@ def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
 
     return e_d_losses, e_g_losses
 
-def build_gan(g_lr=1e-4, d_lr=1e-4):
+def build_cosine_scheduler_with_warmup(initial_lr, warmup_steps, decay_steps, alpha=0.0):
+    """
+    Creates a learning rate scheduler with warmup followed by cosine decay.
+
+    Args:
+        initial_lr (float): Initial learning rate after warmup.
+        warmup_steps (int): Number of steps for warmup phase.
+        decay_steps (int): Number of steps for cosine decay (excluding warmup).
+        alpha (float): Minimum learning rate as a fraction of initial_lr.
+
+    Returns:
+        tf.keras.optimizers.schedules.LearningRateSchedule: A combined warmup + cosine decay scheduler.
+    """
+
+    # Linear warmup from 0 to initial_lr
+    def warmup_fn(step):
+        return (step / warmup_steps) * initial_lr if step < warmup_steps else initial_lr
+
+    warmup_schedule = tf.keras.optimizers.schedules.LambdaLR(warmup_fn)
+
+    # Cosine decay starts after warmup
+    cosine_decay_schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=initial_lr,
+        decay_steps=decay_steps,
+        alpha=alpha
+    )
+
+    # Combine warmup + cosine decay using `PiecewiseConstantDecay`
+    return tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+        boundaries=[warmup_steps],
+        values=[warmup_schedule, cosine_decay_schedule]
+    )
+
+
+def build_gan(g_lr=1e-4, d_lr=1e-4, schedule=False, decay_steps=10000):
     generator = build_generator()
     discriminator = build_discriminator()
 
-    g_optimizer = keras.optimizers.Adam(g_lr)
-    d_optimizer = keras.optimizers.Adam(d_lr)
-
+   
     gan = GAN(generator, discriminator)
     gan.compile(g_optimizer, d_optimizer)
     
     return gan
 
+
+class WarmUpCosineDecay(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, initial_lr, warmup_steps, decay_steps, alpha=0.0):
+        """
+        Learning rate schedule with warmup followed by cosine decay.
+        
+        Args:
+            initial_lr (float): Peak learning rate after warmup.
+            warmup_steps (int): Number of steps for warmup.
+            decay_steps (int): Steps for cosine decay (excluding warmup).
+            alpha (float): Minimum learning rate as a fraction of initial_lr.
+        """
+        self.initial_lr = initial_lr
+        self.warmup_steps = warmup_steps
+        self.decay_steps = decay_steps
+        self.alpha = alpha
+        self.cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=initial_lr, decay_steps=decay_steps, alpha=alpha
+        )
+
+    def __call__(self, step):
+        # Linear warmup
+        warmup_lr = (step / self.warmup_steps) * self.initial_lr if step < self.warmup_steps else self.initial_lr
+        # Apply cosine decay after warmup
+        return tf.cond(
+            step < self.warmup_steps,
+            lambda: warmup_lr,
+            lambda: self.cosine_decay(step - self.warmup_steps)
+        )
+
+    def get_config(self):
+        return {
+            "initial_lr": self.initial_lr,
+            "warmup_steps": self.warmup_steps,
+            "decay_steps": self.decay_steps,
+            "alpha": self.alpha
+        }
+
+
+
+def build_gan(g_lr=1e-4, d_lr=1e-4, schedule=False, warmup_steps=1000, decay_steps=10000):
+    generator = build_generator()
+    discriminator = build_discriminator()
+
+    if schedule:
+        g_lr_schedule = WarmUpCosineDecay(g_lr, warmup_steps, decay_steps)
+        d_lr_schedule = WarmUpCosineDecay(d_lr, warmup_steps, decay_steps)
+        g_optimizer = keras.optimizers.Adam(g_lr_schedule)
+        d_optimizer = keras.optimizers.Adam(d_lr_schedule)
+    else:
+        g_optimizer = keras.optimizers.Adam(g_lr)
+        d_optimizer = keras.optimizers.Adam(d_lr)
+
+    gan = GAN(generator, discriminator)
+    gan.compile(g_optimizer, d_optimizer)
+    
+    return gan
 
 def generate_and_save_images(epoch, generator):
     noise = np.random.normal(0, 1, (16, LATENT_DIM))

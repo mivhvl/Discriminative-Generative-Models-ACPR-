@@ -1,0 +1,12 @@
+Notes for the work
+
+links:
+
+FIQ -> 
+    basic knowledge ::https://www.techtarget.com/searchenterpriseai/definition/Frechet-inception-distance-FID
+    Implement ex :: https://machinelearningmastery.com/how-to-implement-the-frechet-inception-distance-fid-from-scratch/
+    PyTorch FID library :: https://github.com/mseitzer/pytorch-fid
+    --> tensorflow  FIB library ::https://github.com/bioinf-jku/TTUR/blob/master/precalc_stats_example.py
+
+
+

@@ -1,9 +1,11 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+import tensorflow_gan as tfgan
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import display
+from _fid import *
 
 # Define input image dimensions
 IMG_SHAPE = (64, 64, 3)
@@ -68,12 +70,19 @@ def discriminator_loss(real_output, fake_output):
     total_loss = real_loss + fake_loss
     return total_loss
 
+#def discriminator_loss_fid1(real_output, fake_output):
+#    # Calculate FID score
+#    fid_score = tfgan.eval.frechet_inception_distance(
+#        real_output, fake_output
+#    )
+#    return fid_score
+
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
 def graph_losses(d_loss, g_loss):
     plt.figure(figsize=(16, 8), dpi=150) 
-  
+
     plt.plot(d_loss, label='Discriminator Loss', color='orange')
 
     plt.plot(g_loss, label='Generator Loss', color='blue')
@@ -98,15 +107,18 @@ class GAN(keras.Model):
 
     def train_step(self, images, batch_size=128):
         noise = tf.random.normal([batch_size, LATENT_DIM])
-
+        
+        gen_calculate_loss = generator_loss
+        dis_calculate_loss = discriminator_loss
+        
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             generated_images = self.generator(noise, training=True)
 
             real_output = self.discriminator(images, training=True)
             fake_output = self.discriminator(generated_images, training=True)
 
-            gen_loss = generator_loss(fake_output)
-            disc_loss = discriminator_loss(real_output, fake_output)
+            gen_loss = gen_calculate_loss(fake_output)
+            disc_loss = dis_calculate_loss(real_output, fake_output)
 
         gradients_of_generator = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
         gradients_of_discriminator = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
@@ -116,10 +128,10 @@ class GAN(keras.Model):
 
         return disc_loss, gen_loss
 
-def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
+def train_gan(gan, dataset, fid_c, epochs=100, batch_size=128, fid_ok=False, fid_e_size=25, debug_loss=True):
     e_d_losses = []
     e_g_losses = []
-
+    
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
@@ -134,6 +146,13 @@ def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
         e_d_loss = np.mean(d_losses)
         e_g_loss = np.mean(g_losses)
         print(f"Epoch {epoch}, D Loss: {e_d_loss}, G Loss: {e_g_loss}")
+        
+        if epoch % fid_e_size == 0  and fid_ok:
+            noise = tf.random.normal([batch_size, LATENT_DIM])
+            fake_img = gan.generator(noise, training=False)
+            fid_c.get_generated_features(fake_img)
+            fid_score = fid_c.calculate_fid()
+            print(f"Epoch {epoch}, FID: {fid_score.numpy()}")
 
         if debug_loss:
             graph_losses(e_d_losses, e_g_losses)  # Ensure you have this function defined

@@ -1,14 +1,13 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-import tensorflow_gan as tfgan
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import display
 from _fid import *
 
 # Define input image dimensions
-IMG_SHAPE = (64, 64, 3)
+IMG_SHAPE = (128, 128, 3)
 LATENT_DIM = 100  # Size of the noise vector
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy()
@@ -128,13 +127,14 @@ class GAN(keras.Model):
 
         return disc_loss, gen_loss
 
-def train_gan(gan, dataset, fid_c, epochs=100, batch_size=128, fid_ok=False, fid_e_size=25, debug_loss=True):
+def train_gan(gan, dataset, fid_eval, epochs=100, batch_size=128, fid_ok=False, fid_e_size=25, debug_loss=True):
     e_d_losses = []
     e_g_losses = []
     
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
+
         for batch in dataset:
             d_loss, g_loss = gan.train_step(batch, batch_size=batch_size // 2)
             d_losses.append(d_loss.numpy())
@@ -150,8 +150,8 @@ def train_gan(gan, dataset, fid_c, epochs=100, batch_size=128, fid_ok=False, fid
         if epoch % fid_e_size == 0  and fid_ok:
             noise = tf.random.normal([batch_size, LATENT_DIM])
             fake_img = gan.generator(noise, training=False)
-            fid_c.get_generated_features(fake_img)
-            fid_score = fid_c.calculate_fid()
+            fid_eval.get_generated_features(fake_img)
+            fid_score = fid_eval.calculate_fid(None,None,None,None)
             print(f"Epoch {epoch}, FID: {fid_score.numpy()}")
 
         if debug_loss:

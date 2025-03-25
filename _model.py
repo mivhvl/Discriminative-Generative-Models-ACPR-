@@ -76,7 +76,7 @@ def generator_loss(fake_output):
 
 def graph_losses(d_loss, g_loss):
     plt.figure(figsize=(16, 8), dpi=150) 
-  
+
     plt.plot(d_loss, label='Discriminator Loss', color='orange')
 
     plt.plot(g_loss, label='Generator Loss', color='blue')
@@ -89,16 +89,44 @@ def graph_losses(d_loss, g_loss):
     plt.show()
 
 class GAN(keras.Model):
-    def __init__(self, generator, discriminator, label_smoothing):
-        super(GAN, self).__init__()
+    def __init__(self, generator, discriminator, label_smoothing, **kwargs):
+        super(GAN, self).__init__(**kwargs)
         self.generator = generator
         self.discriminator = discriminator
         self.label_smoothing = label_smoothing
+
+    def get_config(self):
+        config = super(GAN, self).get_config()
+        config.update({
+            "label_smoothing": self.label_smoothing,
+            "generator_json": self.generator.to_json(),
+            "discriminator_json": self.discriminator.to_json()
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        generator = keras.models.model_from_json(config.pop("generator_json"))
+        discriminator = keras.models.model_from_json(config.pop("discriminator_json"))
+        return cls(generator=generator, discriminator=discriminator, **config)
 
     def compile(self, g_optimizer, d_optimizer):
         super(GAN, self).compile()
         self.g_optimizer = g_optimizer
         self.d_optimizer = d_optimizer
+
+    def get_compile_config(self):
+        return {
+            "g_optimizer": keras.optimizers.serialize(self.g_optimizer),
+            "d_optimizer": keras.optimizers.serialize(self.d_optimizer)
+        }
+
+    def compile_from_config(self, config):
+        """Restores the optimizer configuration."""
+        self.compile(
+            g_optimizer=keras.optimizers.deserialize(config["g_optimizer"]),
+            d_optimizer=keras.optimizers.deserialize(config["d_optimizer"])
+        )
 
     def train_step(self, images, batch_size=128):
         noise = tf.random.normal([batch_size, LATENT_DIM])

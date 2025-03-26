@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from IPython import display
 
+from _fid import *
+
 # Define input image dimensions
 IMG_SHAPE = (64, 64, 3)
 LATENT_DIM = 100  # Size of the noise vector
@@ -148,7 +150,7 @@ class GAN(keras.Model):
 
         return disc_loss, gen_loss
 
-def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
+def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True, fid=True):
     e_d_losses = []
     e_g_losses = []
 
@@ -167,6 +169,17 @@ def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True):
         e_g_loss = np.mean(g_losses)
         print(f"Epoch {epoch}, D Loss: {e_d_loss}, G Loss: {e_g_loss}")
 
+        if fid and epoch % 50 == 0:
+            noise = np.random.normal(0, 1, (batch_size, LATENT_DIM))
+            gen_images = gan.generator.predict(noise)
+            real_images = dataset.take(1)
+            real_images = next(iter(dataset.take(1)))[0].numpy()
+            # Ensure correct dtype for skimage
+            real_images = real_images.astype(np.float32)
+            gen_images = img_scaler(gen_images, (75,75,3))
+            real_images = img_scaler(real_images, (75,75,3))
+            fid_score = calculate_fid(inception_model, gen_images, real_images)
+            print('FID SCORE: ', fid_score)
         if debug_loss:
             graph_losses(e_d_losses, e_g_losses)  # Ensure you have this function defined
         generate_and_save_images(epoch, gan.generator)  # Ensure this function is also defined

@@ -10,96 +10,22 @@ from _fid import *
 # Define input image dimensions
 IMG_SHAPE = (64, 64, 3)
 LATENT_DIM = 100  # Size of the noise vector
+LAMBDA = 10
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
-
-def build_generator(leak=False):
-    if leak:
-        act = layers.LeakyReLU
-    else:
-        act = layers.ReLU
-    model = keras.Sequential([
-        layers.Dense(8 * 8 * 128, use_bias=False, input_shape=(LATENT_DIM,)),
-        layers.BatchNormalization(),
-        act(),
-        layers.Reshape((8, 8, 128)),
-
-        layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        act(),
-
-
-        layers.Conv2DTranspose(32, (5, 5), strides=(2, 2), padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        act(),
-        
-        layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
-    ])
-    return model
-
-def build_discriminator():
-    model = keras.Sequential([
-        layers.Conv2D(64, kernel_size=4, strides=2, padding='same', use_bias=False),
-        layers.LeakyReLU(alpha=0.2),
-        
-        # State size: (64) x 32 x 32
-        layers.Conv2D(64 * 2, kernel_size=4, strides=2, padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-        
-        # State size: (64*2) x 16 x 16
-        layers.Conv2D(64 * 4, kernel_size=4, strides=2, padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-        
-        # State size: (64*4) x 8 x 8
-        layers.Conv2D(64 * 8, kernel_size=4, strides=2, padding='same', use_bias=False),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-        
-        # State size: (64*8) x 4 x 4
-        layers.Conv2D(1, kernel_size=4, strides=1, padding='valid', use_bias=False),
-        layers.Activation('sigmoid')
-    ])
-    return model
-
-def discriminator_loss(real_output, fake_output, label_smoothing=False):
-    if label_smoothing:
-        real_loss = cross_entropy(tf.ones_like(real_output, dtype=tf.float32)*0.9, real_output)
-    else:
-        real_loss = cross_entropy(tf.ones_like(real_output), real_output)
-    fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
-    total_loss = real_loss + fake_loss
-    return total_loss
-
-def generator_loss(fake_output):
-    return cross_entropy(tf.ones_like(fake_output), fake_output)
-
-def graph_losses(d_loss, g_loss):
-    plt.figure(figsize=(16, 8), dpi=150) 
-
-    plt.plot(d_loss, label='Discriminator Loss', color='orange')
-
-    plt.plot(g_loss, label='Generator Loss', color='blue')
-
-    # adding title to the plot 
-    plt.title('Loss per iteration (batch)') 
-    
-    # adding Label to the x-axis 
-    plt.xlabel('iteration')
-    plt.show()
-
 class GAN(keras.Model):
-    def __init__(self, generator, discriminator, label_smoothing, **kwargs):
+    def __init__(self, generator, discriminator, label_smoothing, wgan, **kwargs):
         super(GAN, self).__init__(**kwargs)
         self.generator = generator
         self.discriminator = discriminator
         self.label_smoothing = label_smoothing
+        self.wgan = wgan
 
     def get_config(self):
         config = super(GAN, self).get_config()
         config.update({
+            "wgan": self.wgan,
             "label_smoothing": self.label_smoothing,
             "generator_json": self.generator.to_json(),
             "discriminator_json": self.discriminator.to_json()
@@ -139,8 +65,15 @@ class GAN(keras.Model):
             real_output = self.discriminator(images, training=True)
             fake_output = self.discriminator(generated_images, training=True)
 
-            gen_loss = generator_loss(fake_output)
-            disc_loss = discriminator_loss(real_output, fake_output, self.label_smoothing)
+            if self.wgan:
+                gen_loss = -tf.reduce_mean(fake_output)
+                disc_loss = tf.reduce_mean(fake_output) - tf.reduce_mean(real_output)
+                gp = gradient_penalty(self.discriminator, images, generated_images)
+                disc_loss += LAMBDA * gp
+            else:
+                gen_loss = generator_loss(fake_output)
+                disc_loss = discriminator_loss(real_output, fake_output, self.label_smoothing)
+
 
         gradients_of_generator = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
         gradients_of_discriminator = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
@@ -149,6 +82,94 @@ class GAN(keras.Model):
         self.d_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator.trainable_variables))
 
         return disc_loss, gen_loss
+
+def discriminator_loss(real_output, fake_output, label_smoothing=False):
+    if label_smoothing:
+        real_loss = cross_entropy(tf.ones_like(real_output, dtype=tf.float32)*0.9, real_output)
+    else:
+        real_loss = cross_entropy(tf.ones_like(real_output), real_output)
+    fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
+    total_loss = real_loss + fake_loss
+    return total_loss
+
+def generator_loss(fake_output):
+    return cross_entropy(tf.ones_like(fake_output), fake_output)
+
+def graph_losses(d_loss, g_loss):
+    plt.figure(figsize=(16, 8), dpi=150) 
+
+    plt.plot(d_loss, label='Discriminator Loss', color='orange')
+
+    plt.plot(g_loss, label='Generator Loss', color='blue')
+
+    # adding title to the plot 
+    plt.title('Loss per iteration (batch)') 
+    
+    # adding Label to the x-axis 
+    plt.xlabel('iteration')
+    plt.show()
+
+def gradient_penalty(discriminator, real_images, fake_images):
+    batch_size = real_images.shape[0]
+    alpha = tf.random.uniform([batch_size, 1, 1, 1], 0., 1.)
+    interpolated_images = alpha * real_images + (1 - alpha) * fake_images
+    with tf.GradientTape() as tape:
+        tape.watch(interpolated_images)
+        pred = discriminator(interpolated_images, training=True)
+    grads = tape.gradient(pred, interpolated_images)
+    norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
+    gp = tf.reduce_mean((norm - 1.0) ** 2)
+    return gp
+
+def build_discriminator():
+    model = keras.Sequential([
+        layers.Conv2D(64, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64) x 32 x 32
+        layers.Conv2D(64 * 2, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64*2) x 16 x 16
+        layers.Conv2D(64 * 4, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64*4) x 8 x 8
+        layers.Conv2D(64 * 8, kernel_size=4, strides=2, padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+        
+        # State size: (64*8) x 4 x 4
+        layers.Conv2D(1, kernel_size=4, strides=1, padding='valid', use_bias=False),
+        layers.Activation('sigmoid')
+    ])
+    return model
+
+def build_generator(leak=False):
+    if leak:
+        act = layers.LeakyReLU
+    else:
+        act = layers.ReLU
+    model = keras.Sequential([
+        layers.Dense(8 * 8 * 128, use_bias=False, input_shape=(LATENT_DIM,)),
+        layers.BatchNormalization(),
+        act(),
+        layers.Reshape((8, 8, 128)),
+
+        layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        act(),
+
+
+        layers.Conv2DTranspose(32, (5, 5), strides=(2, 2), padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        act(),
+        
+        layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
+    ])
+    return model
 
 def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True, fid=True):
     e_d_losses = []
@@ -186,14 +207,14 @@ def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True, fid=Tru
 
     return e_d_losses, e_g_losses
 
-def build_gan(g_lr=1e-4, d_lr=1e-4, label_smoothing=False):
+def build_gan(g_lr=1e-4, d_lr=1e-4, label_smoothing=False, wgan=False):
     generator = build_generator()
     discriminator = build_discriminator()
 
     g_optimizer = keras.optimizers.Adam(g_lr)
     d_optimizer = keras.optimizers.Adam(d_lr)
 
-    gan = GAN(generator, discriminator, label_smoothing)
+    gan = GAN(generator, discriminator, label_smoothing, wgan)
     gan.compile(g_optimizer, d_optimizer)
     
     return gan
@@ -209,4 +230,3 @@ def generate_and_save_images(epoch, generator):
         ax.axis('off')
     plt.savefig(f'gan_images/epoch_{epoch}.png')
     plt.close()
-

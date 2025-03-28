@@ -46,42 +46,81 @@ class FID():
         return self.mu_generated, self.sigma_generated
     
     def calculate_fid(self, mu_real, sigma_real, mu_gen, sigma_gen):
-        if mu_real not in locals():
-            mu_real = self.mu_real
-        if sigma_real not in locals():
-            sigma_real = self.sigma_real
-        if mu_gen not in locals():
-            mu_gen = self.mu_generated
-        if sigma_gen not in locals():
-            sigma_gen = self.sigma_generated
         
-        # Calculate the difference between means
-        diff = mu_real - mu_gen 
+        #if mu_real is not None:
+        #    mu_real = self.mu_real
+        #if sigma_real is not None:
+        #    sigma_real = self.sigma_real
+        #if mu_gen is not None:
+        #    mu_gen = self.mu_generated
+        #if sigma_gen is not None:
+        #    sigma_gen = self.sigma_generated
         
-        # Calculate the square root of the product of covariance matrices
-        covmean = sqrtm(sigma_real @ sigma_gen) 
-        # Handle possible numerical instability
+        # Ensure covariance matrices are 2D
+        if sigma_real.ndim == 1:
+            sigma_real = sigma_real.reshape(1, -1)
+        if sigma_gen.ndim == 1:
+            sigma_gen = sigma_gen.reshape(1, -1)
+
+        # Compute the mean difference
+        diff = mu_real - mu_gen
+
+        # Calculate sqrt of the product of covariance matrices
+        try:
+            covmean = sqrtm(sigma_real @ sigma_gen)
+        except ValueError as e:
+            print(f"Error during sqrtm computation: {e}")
+            return None
+
+        # Handle numerical instability (convert complex to real if necessary)
         if np.iscomplexobj(covmean):
-            covmean = covmean.real
-            
-        # Fréchet Distance formula
-        fid = diff @ diff + np.trace(sigma_real + sigma_gen - 2 * covmean)
+            covmean = np.real(covmean)
+
+        # Compute the FID score
+        fid = diff.dot(diff) + np.trace(sigma_real + sigma_gen - 2 * covmean)
         return fid
 
 
-# - ----------------------------------------------------------------------------------------------------------------------------------------
-# calculate frechet inception distance 
-def calculate_fid(act1, act2):
-	# calculate mean and covariance statistics
-	mu1, sigma1 = act1.mean(axis=0), cov(act1, rowvar=False)
-	mu2, sigma2 = act2.mean(axis=0), cov(act2, rowvar=False)
-	# calculate sum squared difference between means
-	ssdiff = numpy.sum((mu1 - mu2)**2.0)
-	# calculate sqrt of product between cov
-	covmean = sqrtm(sigma1.dot(sigma2))
-	# check and correct imaginary numbers from sqrt
-	if iscomplexobj(covmean):
-		covmean = covmean.real
-	# calculate score
-	fid = ssdiff + trace(sigma1 + sigma2 - 2.0 * covmean)
-	return fid
+    # - ----------------------------------------------------------------------------------------------------------------------------------------
+    def get_real_features_2(self, real_images):
+        
+        self.real_features = self.extract_features(real_images, expand=True)
+        
+        return self.real_features
+    
+    def get_generated_features_2(self, fake_images):
+        
+        self.generated_features = self.extract_features(fake_images)
+        
+        return self.generated_features
+    
+    # calculate frechet inception distance 
+    def calculate_fid_2(self, act1, act2):
+            # Convert tensors to NumPy arrays
+        act1_np = act1.numpy()
+        act2_np = act2.numpy()
+        
+        # Check shapes
+        print(f"act1_np shape: {act1_np.shape}, act2_np shape: {act2_np.shape}")
+        
+        # Ensure there are multiple samples
+        if act1_np.shape[0] < 2 or act2_np.shape[0] < 2:
+            raise ValueError("Not enough samples to calculate covariance. Ensure you have multiple samples.")
+        
+        # calculate mean and covariance statistics
+        mu1, sigma1 = act1_np.mean(axis=0), np.cov(act1_np, rowvar=False)
+        mu2, sigma2 = act2_np.mean(axis=0), np.cov(act2_np, rowvar=False)
+    
+        # Check shapes
+        print(f"sigma1 shape: {sigma1.shape}, sigma2 shape: {sigma2.shape}")
+        
+        # calculate sum squared difference between means
+        ssdiff = np.sum((mu1 - mu2)**2.0)
+        # calculate sqrt of product between cov
+        covmean = sqrtm(sigma1.dot(sigma2))
+        # check and correct imaginary numbers from sqrt
+        if iscomplexobj(covmean):
+            covmean = covmean.real
+        # calculate score
+        fid = ssdiff + trace(sigma1 + sigma2 - 2.0 * covmean)
+        return fid

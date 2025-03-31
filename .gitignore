@@ -1,5 +1,7 @@
 .ipynb_checkpoints
 data
+gan_images
+models
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
@@ -9,6 +11,7 @@ data
 __pycache__/
 *.py[cod]
 *$py.class
+py_venv
 
 # C extensions
 *.so
@@ -131,6 +134,8 @@ celerybeat.pid
 .venv
 env/
 venv/
+venv2/
+.venv2
 ENV/
 env.bak/
 venv.bak/

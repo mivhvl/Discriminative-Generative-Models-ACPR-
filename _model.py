@@ -76,18 +76,21 @@ def discriminator_loss(real_output, fake_output, label_smoothing=False):
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
-def graph_losses(d_loss, g_loss):
+def graph_losses(d_loss=None, g_loss=None):
     plt.figure(figsize=(16, 8), dpi=150) 
 
-    plt.plot(d_loss, label='Discriminator Loss', color='orange')
+    if d_loss is not None:
+        plt.plot(d_loss, label='Discriminator Loss', color='orange')
 
-    plt.plot(g_loss, label='Generator Loss', color='blue')
+    if g_loss is not None:
+        plt.plot(g_loss, label='Generator Loss', color='blue')
 
     # adding title to the plot 
     plt.title('Loss per iteration (batch)') 
     
     # adding Label to the x-axis 
     plt.xlabel('iteration')
+    plt.ylabel('Loss')
     plt.show()
 
 class GAN(keras.Model):
@@ -186,9 +189,12 @@ def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True, fid=Tru
 
     return e_d_losses, e_g_losses
 
-def build_gan(g_lr=1e-4, d_lr=1e-4, label_smoothing=False):
-    generator = build_generator()
-    discriminator = build_discriminator()
+def build_gan(generator=None, discriminator=None, g_lr=1e-4, d_lr=1e-4, label_smoothing=False):
+    if generator is None:
+        generator = build_generator()
+    
+    if discriminator is None:
+        discriminator = build_discriminator()
 
     g_optimizer = keras.optimizers.Adam(g_lr)
     d_optimizer = keras.optimizers.Adam(d_lr)
@@ -209,4 +215,59 @@ def generate_and_save_images(epoch, generator):
         ax.axis('off')
     plt.savefig(f'gan_images/epoch_{epoch}.png')
     plt.close()
+
+def train_discriminator(discriminator, dataset_real, dataset_fake, epochs=100, debug_loss=True, batch_size=128, label_smoothing=False):
+    e_d_total_losses = []
+    discriminator_optimizer = tf.keras.optimizers.Adam(1e-4) # You'll need an optimizer
+
+    # Create iterators for the datasets to manually fetch batches
+    real_iterator = iter(dataset_real)
+    fake_iterator = iter(dataset_fake)
+
+    num_batches = len(list(dataset_real.as_numpy_iterator())) # Get the number of batches in the real dataset
+
+    for epoch in range(epochs):
+        d_losses = []
+        try:
+            for _ in range(num_batches):
+                batch_real = next(real_iterator)
+                batch_fake = next(fake_iterator) # Ensure fake batch is available
+
+                # Ensure both batches have the same size or handle potential mismatch
+                current_batch_size = batch_real.shape[0]
+                if batch_fake.shape[0] < current_batch_size:
+                    # Pad or truncate batch_fake to match batch_real size
+                    padding_needed = current_batch_size - batch_fake.shape[0]
+                    padding = np.zeros((padding_needed,) + batch_fake.shape[1:], dtype=batch_fake.dtype)
+                    batch_fake = np.concatenate([batch_fake, padding], axis=0)
+                elif batch_fake.shape[0] > current_batch_size:
+                    batch_fake = batch_fake[:current_batch_size]
+
+                d_loss = train_discriminator_step(discriminator, batch_real, batch_fake, discriminator_optimizer, label_smoothing=label_smoothing)
+                d_losses.append(d_loss.numpy())
+                e_d_total_losses.append(d_loss.numpy())
+
+        except StopIteration:
+            print("Datasets exhausted. Consider resetting iterators if needed for more epochs.")
+            break
+
+        display.clear_output(wait=True)
+        e_d_loss = np.mean(d_losses)
+        print(f"Epoch {epoch+1}, D Loss: {e_d_loss}")
+
+    if debug_loss:
+        graph_losses(e_d_total_losses, None)
+
+
+# Define the training step for the discriminator
+@tf.function
+def train_discriminator_step(discriminator, real_images, fake_images, discriminator_optimizer, label_smoothing=False):
+    with tf.GradientTape() as disc_tape:
+        real_output = discriminator(real_images, training=True)
+        fake_output = discriminator(fake_images, training=True)
+        disc_loss = discriminator_loss(real_output, fake_output, label_smoothing=label_smoothing)
+
+    gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
+    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
+    return disc_loss
 

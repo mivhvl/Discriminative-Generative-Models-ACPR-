@@ -23,6 +23,8 @@ def img_scaler(images, new_shape):
 
 # calculate frechet inception distance
 def calculate_fid(model, images1, images2):
+	images1 = preprocess_input(images1)
+	images2 = preprocess_input(images2)
 	# calculate activations
 	act1 = model.predict(images1)
 	act2 = model.predict(images2)

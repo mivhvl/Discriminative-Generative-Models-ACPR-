@@ -24,13 +24,20 @@ def summarize_images(image_list, label):
     print(f"Color Modes: {modes}")
     print(f"Top 5 Sizes: {sizes.most_common(5)}")
 
-def base_stats(real_dir, fake_dir):
+def base_stats(real_dir, fake1_dir, fake2_dir, fake3_dir):
     # Analyze images in both folders
     real_images = analyze_images(real_dir)
-    fake_images = analyze_images(fake_dir)
+    fake1_images = analyze_images(fake1_dir)
+    fake2_images = analyze_images(fake2_dir)
+    fake3_images = analyze_images(fake3_dir)
+
     # Print summaries
     summarize_images(real_images, "Real")
-    summarize_images(fake_images, "Fake")
+    summarize_images(fake1_images, "Fake1")
+    summarize_images(fake2_images, "Fake2")
+    summarize_images(fake3_images, "Fake3")
 
     del real_images
-    del fake_images
+    del fake1_images
+    del fake2_images
+    del fake3_images

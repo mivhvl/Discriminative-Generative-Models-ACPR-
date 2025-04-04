@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageOps
 import os
 
 def standardize_1_file(input_dir, output_dir, filename, TARGET_SIZE):
@@ -32,4 +32,36 @@ def standardize_files(input_dir, TARGET_SIZE, suffix=''):
 
     print("Normalization complete. Images saved in 'data/real_normalized'.")
 
-standardize_1_file('data/real', './', '808_1899-08-13_1955.jpg', (128, 128))
+def augment_1_file(input_dir, output_dir, filename):
+    file_path = os.path.join(input_dir, filename)
+    print(file_path)
+    try:
+        basePath = os.path.join(output_dir, filename)
+        with Image.open(file_path) as img:
+            img_flipped = img.transpose(Image.FLIP_TOP_BOTTOM)
+            img_flipped.save(basePath + '.flipped.jpg', "JPEG")
+
+            img_mirrored = ImageOps.mirror(img)
+            img_mirrored.save(basePath + '.mirrored.jpg', "JPEG")
+
+            img_rotate_r = img.rotate(45)
+            img_rotate_r.save(basePath + '.rotate.jpg', "JPEG")
+
+            img_rotate_l = img.rotate(-45)
+            img_rotate_l.save(basePath + '.rotate_l.jpg', "JPEG")
+
+            img_contrast = ImageOps.autocontrast(img)
+            img_contrast.save(basePath + '.contrast.jpg', "JPEG")
+
+            img.save(basePath + '.jpg', "JPEG")
+
+
+    except Exception as e:
+        print(f"Skipping {filename}: {e}")
+
+def augment_files(input_dir):
+    output_dir = input_dir + "_augmented"
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    for filename in os.listdir(input_dir):
+        augment_1_file(input_dir, output_dir, filename)

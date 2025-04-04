@@ -14,6 +14,12 @@ LAMBDA = 10
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
+import datetime  # For timestamping logs
+
+# Define where to save logs
+log_dir = "logs/gan_training/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+summary_writer = tf.summary.create_file_writer(log_dir)
+
 class GAN(keras.Model):
     def __init__(self, generator, discriminator, label_smoothing, wgan, **kwargs):
         super(GAN, self).__init__(**kwargs)
@@ -56,10 +62,10 @@ class GAN(keras.Model):
             d_optimizer=keras.optimizers.deserialize(config["d_optimizer"])
         )
 
-    def train_step(self, images, batch_size=128):
+    def train_step(self, images, step, batch_size=128):
         noise = tf.random.normal([batch_size, LATENT_DIM])
-
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+     
+        with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape() as disc_tape:
             generated_images = self.generator(noise, training=True)
 
             real_output = self.discriminator(images, training=True)
@@ -77,6 +83,17 @@ class GAN(keras.Model):
 
         gradients_of_generator = gen_tape.gradient(gen_loss, self.generator.trainable_variables)
         gradients_of_discriminator = disc_tape.gradient(disc_loss, self.discriminator.trainable_variables)
+        
+        with summary_writer.as_default():
+            for i, layer in enumerate(self.generator.layers):
+                for var in layer.trainable_variables:
+                    grad = gen_tape.gradient(gen_loss, var)
+                    if grad is not None:
+                        mean = tf.reduce_mean(tf.abs(grad))
+                        tf.summary.scalar(f'grad_mean_layer_{i+1}', mean, step=step)
+                        tf.summary.histogram(f'grad_hist_layer_{i+1}', grad, step=step)
+            
+        
 
         self.g_optimizer.apply_gradients(zip(gradients_of_generator, self.generator.trainable_variables))
         self.d_optimizer.apply_gradients(zip(gradients_of_discriminator, self.discriminator.trainable_variables))
@@ -174,12 +191,14 @@ def build_generator(leak=False):
 def train_gan(gan, dataset, epochs=100, batch_size=128, debug_loss=True, fid=True):
     e_d_losses = []
     e_g_losses = []
+    step = 0
 
     for epoch in range(epochs):
         d_losses = []
         g_losses = []
         for batch in dataset:
-            d_loss, g_loss = gan.train_step(batch, batch_size=batch_size // 2)
+            d_loss, g_loss = gan.train_step(batch, step, batch_size=batch_size // 2)
+            step += 1
             d_losses.append(d_loss.numpy())
             g_losses.append(g_loss.numpy())
             e_d_losses.append(d_loss.numpy())

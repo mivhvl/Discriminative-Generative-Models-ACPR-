@@ -28,3 +28,4 @@ def base_stats(dir):
     images = analyze_images(dir)
     summarize_images(images, "Real")
     del images
+

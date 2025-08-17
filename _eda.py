@@ -24,13 +24,8 @@ def summarize_images(image_list, label):
     print(f"Color Modes: {modes}")
     print(f"Top 5 Sizes: {sizes.most_common(5)}")
 
-def base_stats(real_dir, fake_dir):
-    # Analyze images in both folders
-    real_images = analyze_images(real_dir)
-    fake_images = analyze_images(fake_dir)
-    # Print summaries
-    summarize_images(real_images, "Real")
-    summarize_images(fake_images, "Fake")
+def base_stats(dir):
+    images = analyze_images(dir)
+    summarize_images(images, "Real")
+    del images
 
-    del real_images
-    del fake_images

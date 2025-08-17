@@ -7,6 +7,7 @@ import cv2
 from ultralytics import YOLO
 from tqdm import tqdm
 
+
 def standardize_1_file(input_dir, output_dir, filename, TARGET_SIZE=False):
     file_path = os.path.join(input_dir, filename)
     print(file_path)
@@ -26,6 +27,24 @@ def standardize_1_file(input_dir, output_dir, filename, TARGET_SIZE=False):
 def standardize_files(input_dir, TARGET_SIZE=False, suffix=''):
 
     output_dir = input_dir + "_normalized" + suffix
+def standardize_files(input_dir, TARGET_SIZE, output_dir):
+    """
+    Standardizes images in a given directory by resizing and converting them to JPEG format.
+
+    Parameters:
+    input_dir (str): Path to the directory containing the input images.
+    TARGET_SIZE (tuple): The target size for resizing images, specified as (width, height).
+    output_dir (str or None): Path to the directory where standardized images will be saved. 
+                              If None, a new directory with suffix '_normalized' will be created.
+
+    The function resizes all images in the input directory to the specified target size, converts 
+    them to RGB color mode, and saves them as JPEG files in the output directory. If an image 
+    cannot be processed, it will be skipped with an error message.
+    """
+    
+    if output_dir is None:
+        output_dir = input_dir + "_normalized"
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
@@ -192,3 +211,4 @@ def detect_and_crop_faces(input_root, output_folder, target_size=(100, 100), mod
             pil_img_resized.save(save_path)
 
     print(f"Processing complete! Cropped and resized images saved in '{output_folder}'.")
+
